@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html>
+<meta charset="UTF-8">
+<title>Clubinho Bird</title>
+<meta name="description" content="Clubinho Flappy">
+<meta name="author" content="LFEstivalet">
+<style>
+html, body {
+    height: 100%;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    font-size: 14px;
+    color:black;
+    background-color: gray;
+}
+</style>
+</head>
+<body>
+
+<canvas id="canvas" width=320 height=480 style="background:url('assets/images/bg.png');background-size: 100%; height: 95%"></canvas>
+
+<script>
+var ctx = canvas.getContext("2d"); 
+const JUMP_AMOUNT = -10;              
+const MAX_FALL_SPEED= 2;             
+const ACCELERATION = 1;          
+const PIPE_SPEED = -1.5;                
+var gameMode = 'intro';          
+var time_game_last_running;        
+var bottom_bar_offset = 0;         
+var pipes = [];                      
+let score = 0;
+let oldscore = 0;
+
+let config = {
+    "assets": {
+        "images": {
+            "fg": {
+                "image": 'assets/images/fg.png',
+            },
+            "bird": {
+                "image": 'assets/images/bird.png',
+            },
+            "finishLine": {
+                "image": 'assets/images/finish.png',
+            },
+            "pipe": {
+                "image": 'assets/images/pipe.png',
+            },
+            "win": {
+                "image": 'assets/images/win.png',
+            },
+        },
+        "sounds" : {
+            "fly": 'assets/audios/fly.mp3',  
+            "score": 'assets/audios/score.mp3',  
+        },
+    }
+};
+
+let images = {};
+let audios = {};
+let bird;
+
+window.onload = init;
+
+function init() {
+    window.addEventListener("touchstart", move);     
+    window.addEventListener("mousedown", move);     
+    window.addEventListener("keydown", move);     
+    
+    var sources = {};
+    for (let image in config.assets.images) {
+        sources[image] = config.assets.images[image].image;
+    }
+    
+    var sounds = {};
+    for (let sound in config.assets.sounds) {
+        sounds[sound] = config.assets.sounds[sound];
+    }
+    
+
+    let p1 = ImageLoader(sources);
+    let p2 = AudioLoader(sounds);
+    Promise.all([p1, p2])
+        .then((data) => {
+            images = data[0];
+            audios = data[1];
+
+            bird = new Bird(images.bird, canvas.width / 3, canvas.height / 2);
+
+            initGame();
+            window.requestAnimationFrame(loop);  
+            
+        });
+        
+}
+
+function move(e) {
+    e.preventDefault();
+    switch (gameMode) {
+        case 'intro': {
+            gameMode = 'running';
+            break;
+        } 
+        case 'running': {
+            bird.dy = JUMP_AMOUNT;
+            audios.fly.play();
+            break;
+        } 
+        case 'over': {
+            if (new Date() - time_game_last_running > 1000) {
+                initGame();
+                gameMode = 'running';
+                break;
+            } 
+        }
+    } 
+}
+
+
+class Sprite {
+    
+    constructor(image, x, y) {
+        this.x = x;
+        this.y = y; 
+        this.visible= true;
+        this.dx = 0;
+        this.dy = 0;
+        this.image = image;
+        this.angle = 0;                                 
+        this.flipV = false;             
+        this.flipH = false;                              
+    }
+    
+    draw() {
+        ctx.save();
+        ctx.translate(this.x + this.image.width/2, this.y + this.image.height/2);
+        ctx.rotate(this.angle * Math.PI / 180);                       
+        if (this.flipV) {
+            ctx.scale(1,-1);
+        }
+        if (this.flipH) { 
+            ctx.scale(-1,1);
+        }
+        if (this.visible) {
+            ctx.drawImage(this.image, -this.image.width/2, -this.image.height/2);
+        }
+        ctx.restore();                                               
+    }
+
+    update() {
+        this.x = this.x + this.dx;
+        this.y = this.y + this.dy;                            
+    }
+    
+    collidesWith(sprite) {
+    //if(1==1)return false;
+            return collideRectRect(
+                          this.x,
+                          this.y,
+                          this.image.width,
+                          this.image.height,
+                          sprite.x,
+                          sprite.y,
+                          sprite.image.width,
+                          sprite.image.height,
+        );
+                                                                                     
+    }
+    
+}
+
+class Bird extends Sprite {
+
+    constructor(image, x, y) {
+        super(image, x, y);
+    }
+    
+    update() {
+        super.update();
+        if (this.dy < 0)  {
+            this.angle= -5;                   
+        } else if (this.angle < 0) {                   
+            this.angle = this.angle + 4;        
+        }
+    
+        if (this.dy < MAX_FALL_SPEED) {
+            this.dy = this.dy + ACCELERATION;    
+        }  
+        
+        if (this.y > canvas.height - this.image.height)  {      
+            this.dy = 0;
+            gameMode = 'over';
+        } else if(this.y < 0) {
+            this.y = 0;
+        }
+        
+        for (var i=0; i < pipes.length; i++) {
+            if (super.collidesWith(pipes[i])) {
+                gameMode = "over";
+            }
+        }
+
+    }
+}
+
+
+     
+    
+function addPipe(x, y, gap) {             
+    var topPipe = new Sprite(images.pipe, x,y - images.pipe.height);
+    topPipe.dx = PIPE_SPEED;            
+    pipes.push(topPipe);         
+    
+    var bottomPipe = new Sprite(images.pipe, x, y + gap);
+    bottomPipe.flipV = true;                                
+    bottomPipe.dx = PIPE_SPEED;
+    pipes.push(bottomPipe);
+}
+    
+     
+function initGame() {
+    bird.y = canvas.height / 2;
+    bird.angle= 0;
+    score = 0;
+    oldscore = 0;
+    pipes=[];                           
+    addPipes();                 
+}
+      
+function addPipes() {
+    addPipe(500,  100, 140);
+    addPipe(800,   50, 140);
+    addPipe(1100, 250, 140);
+    addPipe(1400, 150, 120);
+    addPipe(1700, 100, 120);
+    addPipe(2000, 150, 120);
+    addPipe(2300, 200, 120);
+    addPipe(2600,  30, 120);
+    addPipe(2950, 300, 120);
+    addPipe(3200, 100,  110);
+    addPipe(3450, 250,  110);
+    addPipe(3700,  50,  110);
+    var finishLine = new Sprite(images.finishLine, 3900, 0);
+    finishLine.dx = PIPE_SPEED;
+    pipes.push(finishLine);
+}
+ 
+function renderIntroScreen() {
+    ctx.font= "25px Arial";
+    ctx.fillStyle= "black";
+    ctx.textAlign="center";
+    ctx.fillText("Press, touch or click to start", canvas.width / 2, canvas.height / 4);  
+}
+
+function renderGameOverScreen() {
+    ctx.font= "30px Arial";
+    ctx.textAlign="center";
+    if (score == 12) {
+        ctx.drawImage(images.win, 40, 20);
+        ctx.fillStyle= "white";
+        ctx.fillText("WINNER!!!!", canvas.width / 2, 100);  
+        ctx.fillStyle= "red";
+        ctx.fillText("WINNER!!!!", canvas.width / 2+1, 101);  
+    } else {
+        ctx.fillStyle= "black";
+        ctx.fillText("Game Over", canvas.width / 2, 100);  
+    }
+    ctx.fillStyle= "white";
+    ctx.fillText("Score: " + score, canvas.width / 2, 150);  
+    ctx.fillStyle= "red";
+    ctx.fillText("Score: " + score, canvas.width / 2+1, 151);  
+    ctx.font= "20px Arial";
+    ctx.fillStyle= "black";
+    ctx.fillText("Click, touch, or press to play again", canvas.width / 2, 300);  
+    ctx.fillStyle= "white";
+    ctx.fillText("Click, touch, or press to play again", canvas.width / 2+1, 301);  
+}
+
+function renderGameScreen() {
+    time_game_last_running = new Date(); 
+    bottom_bar_offset = bottom_bar_offset + PIPE_SPEED; 
+    for (var i=0; i < pipes.length; i++) {
+        pipes[i].draw(); 
+        if (pipes[i].x < bird.x) {
+            score = Math.floor((i+1)/2);
+            if (i == 24) {
+                gameMode = 'over';
+            }
+        }
+     }
+
+
+    ctx.font= "50px Arial";
+    ctx.fillStyle= "black";
+    ctx.textAlign="center";
+    ctx.fillText(score.toString(), canvas.width / 2, 50);  
+    if (oldscore != score) {
+        audios.score.play();
+        oldscore = score;
+    }
+
+}
+
+function loop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height); 
+    bird.draw(); 
+    
+    if (bottom_bar_offset < -23) {
+        bottom_bar_offset = 0; 
+    }
+    ctx.drawImage(images.fg, bottom_bar_offset, canvas.height - images.fg.height);
+
+    switch (gameMode) {
+        case 'intro': {
+            renderIntroScreen();
+            break;
+        } 
+        case 'running': {
+            bird.update();
+            for (var i=0; i < pipes.length; i++) {
+                pipes[i].update(); 
+             }
+            renderGameScreen();
+            break;
+        }
+        case 'over': {
+            //bird.update();
+            renderGameOverScreen();
+            break;
+        } 
+    } 
+    window.requestAnimationFrame(loop);  
+        
+}
+    
+
+
+
+function ImageLoader(imagesToLoad) {
+    return new Promise((resolve, reject) => {
+        var images = {};
+        var loadedImages = 0;
+        var numImages = 0;
+        for (var src in imagesToLoad) {
+            numImages++;
+        }
+
+        var width = 1;
+        var canvas = document.getElementById('canvas');
+        var ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#FF0000";
+        ctx.font = "60px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText("Loading...", canvas.width/2, canvas.height/2-100);
+
+        for (var src in imagesToLoad) {
+            images[src] = new Image();
+            images[src].onload = function() {
+
+                
+                width = width + canvas.width/numImages;
+                ctx.fillRect(0, canvas.height/2-50, width, 50);
+                
+                if (++loadedImages >= numImages) {
+                    resolve(images);
+                }
+            };
+            images[src].src = imagesToLoad[src];
+        }
+    });
+}
+
+function collideRectRect(x, y, w, h, x2, y2, w2, h2) {
+  //2d
+  //add in a thing to detect rectMode CENTER
+  if (x + w >= x2 &&    // r1 right edge past r2 left
+      x <= x2 + w2 &&    // r1 left edge past r2 right
+      y + h >= y2 &&    // r1 top edge past r2 bottom
+      y <= y2 + h2) {    // r1 bottom edge past r2 top
+        return true;
+  }
+  return false;
+};    
+
+function AudioLoader(audiosToLoad) {
+    return new Promise((resolve, reject) => {
+        var soundsLoaded = {};
+        var loadedSounds = 0;
+        var numSounds = 0;
+        for (var src in audiosToLoad) {
+            numSounds++;
+        }
+        
+        var width = 1;
+        var canvas = document.getElementById('canvas');
+        var ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#FFFF00";
+        ctx.font = "60px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText("Loading...", canvas.width/2, canvas.height/2-100);
+        
+        
+
+        for (var src in audiosToLoad) {
+            soundsLoaded[src] = new Audio();
+            soundsLoaded[src].oncanplaythrough = function() {
+
+                //console.log('promise sound loaded ' + loadedSounds + ' of ' + numSounds);
+            ctx.fillRect(0, canvas.height/2-50, width, 50);
+           // console.log('promise sound loaded ' + loadedSounds + ' of ' + numSounds);
+
+                if (++loadedSounds >= numSounds) {
+                    resolve(soundsLoaded);
+                }
+            };
+            soundsLoaded[src].src = audiosToLoad[src];
+        }
+    });
+}    
+</script>
+
+</body>
+</html>
