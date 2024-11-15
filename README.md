@@ -60,10 +60,10 @@ Ensure all assets are located in the `assets/images/` and `assets/audios/` direc
 ## 📸 Screenshots
 
 ### 🏁 Gameplay
-![Gameplay Screenshot](title.png)
+![Gameplay Screenshot](shot.png)
 
 ### 🎉 Victory Screen
-![Victory Screenshot](assets/img/win.png)
+![Victory Screenshot](assets/images/win.png)
 
 ## 📜 License
 
